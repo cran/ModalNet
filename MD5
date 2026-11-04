@@ -1,0 +1,17 @@
+0b5a8779822bc37dec9d9079f103dc73 *DESCRIPTION
+2d53909cc4bb87533cf4327b682fff40 *NAMESPACE
+6588778cbeec37960aa306cc1cb18660 *NEWS.md
+81ac092b5fb1f27cf4a433983e54367e *R/data.R
+e4402d557991ed8560aa932351c90a82 *R/families.R
+aab912db18b59e590a40043cdf64601b *R/methods.R
+7fc8f9e6ac6a92727c99504eac388e3b *R/modal_net.R
+cb3b20077bebc5da31fc1b46c657c0ff *build/partial.rdb
+51f5082d45f14d40074b421ee2e347bb *data/riboflavinV100.rda
+15789f1e342d5d343b1a0f0fdd1740c3 *man/ModalNet-methods.Rd
+5a6a413ccbc65b3625341e85dd460ba0 *man/generate_modal_data.Rd
+3971d6b9835f56978be2c2819ebd1754 *man/modal_lasso.Rd
+a537f1716e6428b1ba8bec1073d69863 *man/modal_net.Rd
+66f8b1af808acb2e46d348691cd1b7d3 *man/plot.ModalNet.Rd
+25ff7fb66eb7cf6f71931788a954f088 *man/predict.ModalNet.Rd
+84e431f53edb8293e318bdff74f2f7bf *man/riboflavinV100.Rd
+e9b5e5bc1a89119d27cca274b0a742ee *tests/test-modalnet.R
