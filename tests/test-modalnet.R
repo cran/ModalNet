@@ -30,3 +30,18 @@ for (fam in c("gamma", "weibull")) {
 ## Ridge keeps every covariate and converges
 fit <- modal_net(dat$y, X, family = "gamma", alpha = 0)
 stopifnot(length(fit$selected) == p, all(fit$path$converged))
+
+## The null model is always the first candidate of the automatic path
+set.seed(11)
+Xh <- matrix(runif(40 * 60), 40, 60)
+for (fam in c("gamma", "weibull", "lognormal")) {
+  d <- generate_modal_data(Xh, c(0.8, rep(0, 60)), phi = 0.3, family = fam)
+  fit <- modal_net(d$y, Xh, family = fam)
+  stopifnot(fit$path$df[1] == 2, all(fit$path$coef[-1, 1] == 0), fit$path$converged[1],
+            all(diff(fit$path$lambda) < 0))
+}
+
+## Adaptive weights on an arbitrary scale: the path converges
+d <- generate_modal_data(X, c(1, 0.8, -0.6, rep(0, p - 2)), phi = 0.2, family = "gamma")
+fit <- modal_net(d$y, X, family = "gamma", penalty.factor = c(0.01, 0.02, rep(50, p - 2)))
+stopifnot(all(fit$path$converged), all(c(1, 2) %in% fit$selected))

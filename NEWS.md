@@ -1,3 +1,20 @@
+# ModalNet 0.3.1
+
+* The null model (intercept and dispersion only) is now always among the
+  candidates compared by the EBIC. The automatic grid is built from the initial
+  pseudo-response, so its first point could already contain active covariates
+  (or a numerically negligible one), in which case the null model could not be
+  selected. When that happens the null fit is computed directly and placed at
+  the top of the path. Fits with a user-supplied `lambda` are unchanged.
+* `penalty.factor` is rescaled to sum to `p`, as `glmnet` does internally.
+  Before, with weights on another scale (adaptive Lasso) the line search
+  compared a penalty different from the one minimized by the inner solver,
+  rejected valid steps and the path reached `maxit`.
+* At a grid point where the dispersion stays at the boundary of its range for
+  ten consecutive iterations (exponential limit, mode near zero) the iteration
+  now stops and the fit is flagged as not converged, instead of running to
+  `maxit`.
+
 # ModalNet 0.3.0
 
 * First CRAN release.

@@ -37,7 +37,10 @@
 #' \qquad \mathrm{df} = |\hat S_\lambda| + 2,}
 #' is evaluated across the converged fits. The initialization uses a lightly
 #' penalized Gaussian Lasso of \eqn{\log y} on \eqn{X}, which stays well
-#' defined when \eqn{p > n}.
+#' defined when \eqn{p > n}. With an automatic grid, the null model (intercept
+#' and dispersion only) is always among the candidates: when the first grid
+#' point is not the null model, the null fit is computed directly and placed at
+#' the top of the path.
 #'
 #' The penalty is
 #' \eqn{\lambda\Psi(\gamma) = \lambda\sum_j v_j\{\alpha|\gamma_j| + (1-\alpha)\gamma_j^2/2\}}
@@ -67,7 +70,8 @@
 #'   active coefficients, is not a selection criterion there; compare ridge
 #'   fits by prediction instead.
 #' @param penalty.factor optional vector of length \eqn{p} of relative penalty
-#'   weights (adaptive Lasso); zeros leave a variable unpenalized.
+#'   weights (adaptive Lasso); zeros leave a variable unpenalized. As in
+#'   \pkg{glmnet}, the weights are rescaled to sum to \eqn{p}.
 #' @param gamma_ebic the EBIC constant \eqn{\gamma_{\mathrm{EBIC}} \in [0,1]};
 #'   \code{0} gives the ordinary BIC.
 #' @param dfmax the path stops once more than \code{dfmax} covariates are
@@ -150,6 +154,14 @@ modal_net <- function(y, X, family = c("gamma", "weibull", "lognormal"),
   n <- length(y); p <- ncol(X)
   if (is.null(colnames(X))) colnames(X) <- paste0("x", seq_len(p))
   if (is.null(penalty.factor)) penalty.factor <- rep(1, p)
+  if (length(penalty.factor) != p || any(!is.finite(penalty.factor)) || any(penalty.factor < 0) ||
+      sum(penalty.factor) == 0)
+    stop("'penalty.factor' must be a vector of p finite nonnegative weights, not all zero")
+  ## glmnet rescales the penalty factors to sum to p; the same is done here so
+  ## that the merit function of the line search carries exactly the penalty
+  ## that the inner solver minimizes
+  penalty.factor <- penalty.factor * p / sum(penalty.factor)
+  auto_grid <- is.null(lambda)
   if (is.null(lambda.min.ratio)) {
     lambda.min.ratio <- if (n > p) 0.01 else 0.05
     if (alpha == 0) lambda.min.ratio <- 1e-4   # glmnet inflates lambda_max for ridge
@@ -212,6 +224,7 @@ modal_net <- function(y, X, family = c("gamma", "weibull", "lognormal"),
   for (l in seq_len(L)) {
     lam <- lambda[l]
     converged <- FALSE
+    n_bound <- 0L
     for (it in seq_len(maxit)) {
       ## 1. quadratic surrogate at the current iterate
       zw <- fam$zw(y, eta, phi)
@@ -244,6 +257,12 @@ modal_net <- function(y, X, family = c("gamma", "weibull", "lognormal"),
       up <- .update_intercept_phi(fam, y, as.numeric(X %*% gam[-1]), gam[1], phi)
       gam[1] <- up$gamma0; phi <- up$phi
       eta <- .clamp_eta(cbind(1, X) %*% gam)
+      ## at the exponential limit the mode parameterization is degenerate and
+      ## the objective is flat along the (intercept, dispersion) ridge: stop
+      ## iterating and leave the fit flagged as not converged
+      at_bound <- phi <= .phi_bounds[1] * 1.01 || phi >= .phi_bounds[2] * 0.99
+      n_bound <- if (at_bound) n_bound + 1L else 0L
+      if (n_bound >= 10L) break
       obj_new <- objective(gam, phi, lam, S, sdj)
       if (abs(obj_new - obj_old) < tol * (1 + abs(obj_old)) ||
           (max(abs(gam - gam_prev)) < 1e-6 && abs(phi - phi_prev) < 1e-6 * (1 + phi))) {
@@ -268,6 +287,33 @@ modal_net <- function(y, X, family = c("gamma", "weibull", "lognormal"),
   lambda <- lambda[keep]; coefs <- coefs[, keep, drop = FALSE]
   phis <- phis[keep]; logliks <- logliks[keep]; dfs <- dfs[keep]; ebics <- ebics[keep]
   iters <- iters[keep]; convs <- convs[keep]
+
+  ## ---- the null model is always a candidate -----------------------------------
+  ## The grid is built from the initial pseudo-response, so its first point is
+  ## not guaranteed to be the null model. When it is not, the null fit
+  ## (intercept and dispersion only) is computed directly and placed at the top
+  ## of the path, at the smallest lambda for which it satisfies the optimality
+  ## conditions of its own subproblem.
+  if (auto_grid && alpha > 0 && all(penalty.factor > 0) && dfs[1] > 2) {
+    ly <- log(y)
+    starts <- list(c(mean(ly) - stats::var(ly), max(stats::var(ly), 0.05)), c(coefs[1, 1], phis[1]))
+    cand <- lapply(starts, function(s0) .update_intercept_phi(fam, y, rep(0, n), s0[1], s0[2]))
+    ll0 <- vapply(cand, function(u) fam$loglik(y, .clamp_eta(rep(u$gamma0, n)), u$phi), numeric(1))
+    up <- cand[[which.max(ll0)]]
+    zw0 <- fam$zw(y, .clamp_eta(rep(up$gamma0, n)), up$phi)
+    lam0 <- tryCatch({
+      g <- glmnet::glmnet(X, zw0$z, weights = zw0$w, family = "gaussian", alpha = alpha,
+                          penalty.factor = penalty.factor, standardize = standardize)
+      w0 <- zw0$w / sum(zw0$w)
+      sz <- max(sqrt(sum(w0 * (zw0$z - sum(w0 * zw0$z))^2)), 1e-12)
+      g$lambda[1] / (alpha + (1 - alpha) * sz)
+    }, error = function(e) NA_real_)
+    if (!is.finite(lam0) || lam0 <= lambda[1]) lam0 <- lambda[1] * 1.05
+    lambda <- c(lam0, lambda); coefs <- cbind(c(up$gamma0, rep(0, p)), coefs)
+    phis <- c(up$phi, phis); logliks <- c(max(ll0), logliks); dfs <- c(2, dfs)
+    ebics <- c(-2 * max(ll0) + 2 * log(n) + 2 * gamma_ebic * 2 * log(p), ebics)
+    iters <- c(0, iters); convs <- c(TRUE, convs)
+  }
 
   best <- which.min(ebics)
   boundary <- phis[best] <= .phi_bounds[1] * 1.01 || phis[best] >= .phi_bounds[2] * 0.99

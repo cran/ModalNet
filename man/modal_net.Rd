@@ -46,7 +46,8 @@ active coefficients, is not a selection criterion there; compare ridge
 fits by prediction instead.}
 
 \item{penalty.factor}{optional vector of length \eqn{p} of relative penalty
-weights (adaptive Lasso); zeros leave a variable unpenalized.}
+weights (adaptive Lasso); zeros leave a variable unpenalized. As in
+\pkg{glmnet}, the weights are rescaled to sum to \eqn{p}.}
 
 \item{gamma_ebic}{the EBIC constant \eqn{\gamma_{\mathrm{EBIC}} \in [0,1]};
 \code{0} gives the ordinary BIC.}
@@ -129,7 +130,10 @@ a warm start at the previous solution, and the extended BIC
 \qquad \mathrm{df} = |\hat S_\lambda| + 2,}
 is evaluated across the converged fits. The initialization uses a lightly
 penalized Gaussian Lasso of \eqn{\log y} on \eqn{X}, which stays well
-defined when \eqn{p > n}.
+defined when \eqn{p > n}. With an automatic grid, the null model (intercept
+and dispersion only) is always among the candidates: when the first grid
+point is not the null model, the null fit is computed directly and placed at
+the top of the path.
 
 The penalty is
 \eqn{\lambda\Psi(\gamma) = \lambda\sum_j v_j\{\alpha|\gamma_j| + (1-\alpha)\gamma_j^2/2\}}
